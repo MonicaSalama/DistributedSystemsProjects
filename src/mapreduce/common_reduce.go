@@ -1,5 +1,10 @@
 package mapreduce
-
+import (
+	"os"
+	"encoding/json"
+	"sort"
+	"log"
+)
 // doReduce manages one reduce task: it reads the intermediate
 // key/value pairs (produced by the map phase) for this task, sorts the
 // intermediate key/value pairs by key, calls the user-defined reduce function
@@ -43,4 +48,59 @@ func doReduce(
 	// }
 	// file.Close()
 	//
+  var key_value []KeyValue
+	for i := 0 ; i <  nMap ; i++ {
+		file , err := os.Open(reduceName(jobName, i, reduceTaskNumber))
+		if err != nil {
+			log.Fatal(err)
+		}
+		dec := json.NewDecoder(file)
+
+		// while the array contains values
+		for dec.More() {
+			var m KeyValue
+			err := dec.Decode(&m)
+			key_value = append(key_value,m)
+			if err != nil {
+				log.Fatal(err)
+			}
+		}
+		file.Close()
+	}
+	sort.Sort(ByKey(key_value))
+  out_file, err := os.Create(outFile)
+	if err != nil {
+		os.Exit(1)
+	}
+	enc := json.NewEncoder(out_file)
+
+	var values_list []string
+	for i:= 0 ; i < len(key_value) ; i++ {
+		if (i == len(key_value)-1 || key_value[i].Key != key_value[i+1].Key) {
+			values_list = append(values_list, key_value[i].Value)
+			value := reduceF(key_value[i].Key, values_list)
+			kv := KeyValue{Key: key_value[i].Key, Value: value}
+			err := enc.Encode(&kv)
+			if err != nil {
+				log.Fatal(err)
+			}
+			values_list = values_list[:0]
+		} else {
+			values_list = append(values_list, key_value[i].Value)
+		}
+	}
+	out_file.Close()
+
+}
+
+type ByKey []KeyValue
+
+func (s ByKey) Len() int {
+    return len(s)
+}
+func (s ByKey) Swap(i, j int) {
+    s[i], s[j] = s[j], s[i]
+}
+func (s ByKey) Less(i, j int) bool {
+    return s[i].Key <  s[j].Key
 }
